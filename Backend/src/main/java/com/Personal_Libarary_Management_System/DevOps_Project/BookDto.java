@@ -1,51 +1,41 @@
 package com.Personal_Libarary_Management_System.DevOps_Project;
 
-import jakarta.persistence.*;
 import java.time.LocalDateTime;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 
-@Entity
-@Table(name = "books")
-public class Book {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+public class BookDto {
     private Long id;
-
-    @Column(nullable = false)
     private String title;
-
-    @Column(nullable = false)
     private String author;
-
-    @Column(length = 1000)
     private String description;
-
-    @Column(name = "image_path")
     private String imagePath;
-
-    @Column(name = "created_at")
     private LocalDateTime createdAt;
-
-    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
-    @JsonIgnore
-    private User user;
+    public BookDto() {}
 
-    @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
+    public BookDto(Long id, String title, String author, String description, String imagePath,
+                   LocalDateTime createdAt, LocalDateTime updatedAt) {
+        this.id = id;
+        this.title = title;
+        this.author = author;
+        this.description = description;
+        this.imagePath = imagePath;
+        this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
     }
 
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
+    public static BookDto fromEntity(Book b) {
+        return new BookDto(
+            b.getId(),
+            b.getTitle(),
+            b.getAuthor(),
+            b.getDescription(),
+            b.getImagePath(),
+            b.getCreatedAt(),
+            b.getUpdatedAt()
+        );
     }
 
-    // Getters and setters
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public String getTitle() { return title; }
@@ -60,7 +50,4 @@ public class Book {
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
-    @JsonIgnore
-    public User getUser() { return user; }
-    public void setUser(User user) { this.user = user; }
 }

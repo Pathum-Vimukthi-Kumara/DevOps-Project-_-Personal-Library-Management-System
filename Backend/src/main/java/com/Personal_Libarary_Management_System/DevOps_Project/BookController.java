@@ -68,7 +68,7 @@ public class BookController {
             }
 
             Book savedBook = bookRepository.save(book);
-            return ResponseEntity.ok(savedBook);
+            return ResponseEntity.ok(BookDto.fromEntity(savedBook));
         } catch (Exception e) {
             logger.error("Error in addBook", e);
             return ResponseEntity.status(500).body(new ApiResponse("Error adding book: " + e.getMessage()));
@@ -89,7 +89,8 @@ public class BookController {
 
             Long userId = jwtUtil.extractUserId(jwt);
             List<Book> books = bookRepository.findByUserId(userId);
-            return ResponseEntity.ok(books);
+            List<BookDto> dtos = books.stream().map(BookDto::fromEntity).toList();
+            return ResponseEntity.ok(dtos);
         } catch (Exception e) {
             return ResponseEntity.status(500).body(new ApiResponse("Error fetching books"));
         }
@@ -130,7 +131,7 @@ public class BookController {
             }
 
             Book updatedBook = bookRepository.save(book);
-            return ResponseEntity.ok(updatedBook);
+            return ResponseEntity.ok(BookDto.fromEntity(updatedBook));
         } catch (Exception e) {
             logger.error("Error in updateBook", e);
             return ResponseEntity.status(500).body(new ApiResponse("Error updating book"));

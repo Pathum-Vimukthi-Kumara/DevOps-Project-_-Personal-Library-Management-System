@@ -17,7 +17,7 @@ public class ImageController {
     @Value("${file.upload-dir}")
     private String uploadDir;
 
-    @GetMapping("/{filename}")
+    @GetMapping("/{filename:.+}")
     public ResponseEntity<Resource> getImage(@PathVariable String filename) {
         try {
             Path filePath = Paths.get(uploadDir).resolve(filename);
