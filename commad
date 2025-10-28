@@ -1,0 +1,1 @@
+docker exec -it devops_project-mysql-1 mysql -u libraryuser -plibrarypass librarydb
