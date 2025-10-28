@@ -80,12 +80,18 @@ export const getBooks = async () => {
   }
 };
 
-export const addBook = async (title, author, description, image) => {
+export const addBook = async (title, author, description, image, pagesTotal, pagesRead) => {
   const token = getAuthToken();
   const formData = new FormData();
   formData.append('title', title);
   formData.append('author', author);
   formData.append('description', description);
+  if (typeof pagesTotal === 'number') {
+    formData.append('pagesTotal', String(pagesTotal));
+  }
+  if (typeof pagesRead === 'number') {
+    formData.append('pagesRead', String(pagesRead));
+  }
   if (image) {
     formData.append('image', image);
   }
@@ -103,12 +109,18 @@ export const addBook = async (title, author, description, image) => {
   return response.json();
 };
 
-export const updateBook = async (id, title, author, description, image) => {
+export const updateBook = async (id, title, author, description, image, pagesTotal, pagesRead) => {
   const token = getAuthToken();
   const formData = new FormData();
   formData.append('title', title);
   formData.append('author', author);
   formData.append('description', description);
+  if (typeof pagesTotal === 'number') {
+    formData.append('pagesTotal', String(pagesTotal));
+  }
+  if (typeof pagesRead === 'number') {
+    formData.append('pagesRead', String(pagesRead));
+  }
   if (image) {
     formData.append('image', image);
   }

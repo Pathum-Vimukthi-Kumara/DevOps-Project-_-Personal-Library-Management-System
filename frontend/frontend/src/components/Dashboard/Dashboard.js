@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getBooks, addBook, updateBook, deleteBook, removeAuthToken } from '../../services/api';
+import Sidebar from '../Sidebar/Sidebar';
 
 function Dashboard() {
   const [books, setBooks] = useState([]);
@@ -9,11 +10,21 @@ function Dashboard() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [username, setUsername] = useState('');
+  // Filters & search
+  const [search, setSearch] = useState('');
+  const [activeLetter, setActiveLetter] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [authorFilter, setAuthorFilter] = useState('');
+  const [onlyWithCover, setOnlyWithCover] = useState(false);
+  const [progressOnly, setProgressOnly] = useState(false);
+  const [sortBy, setSortBy] = useState('title');
   const [formData, setFormData] = useState({
     title: '',
     author: '',
     description: '',
-    image: null
+    image: null,
+    pagesTotal: 0,
+    pagesRead: 0
   });
   
   const navigate = useNavigate();
@@ -46,12 +57,55 @@ function Dashboard() {
     }
   };
 
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ#'.split('');
+
+  const filteredBooks = useMemo(() => {
+    let list = Array.isArray(books) ? [...books] : [];
+    const q = (search || '').trim().toLowerCase();
+    if (q) {
+      list = list.filter(b =>
+        (b.title || '').toLowerCase().includes(q) ||
+        (b.author || '').toLowerCase().includes(q)
+      );
+    }
+    if (activeLetter) {
+      if (activeLetter === '#') {
+        list = list.filter(b => !/^[A-Za-z]/.test((b.title || '').trim()));
+      } else {
+        list = list.filter(b => (b.title || '').trim().toUpperCase().startsWith(activeLetter));
+      }
+    }
+    if ((authorFilter || '').trim()) {
+      const af = authorFilter.trim().toLowerCase();
+      list = list.filter(b => (b.author || '').toLowerCase().includes(af));
+    }
+    if (onlyWithCover) {
+      list = list.filter(b => !!b.imagePath);
+    }
+    if (progressOnly) {
+      list = list.filter(b => (b.pagesRead || 0) > 0);
+    }
+    // Sort
+    list.sort((a, b) => {
+      if (sortBy === 'author') return (a.author || '').localeCompare(b.author || '');
+      if (sortBy === 'created') return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+      return (a.title || '').localeCompare(b.title || '');
+    });
+    return list;
+  }, [books, search, activeLetter, authorFilter, onlyWithCover, progressOnly, sortBy]);
+
   const handleInputChange = (e) => {
     const { name, value, files } = e.target;
     if (name === 'image') {
       setFormData(prev => ({ ...prev, image: files[0] }));
     } else {
-      setFormData(prev => ({ ...prev, [name]: value }));
+      // Convert numeric fields to numbers
+      if (name === 'pagesTotal' || name === 'pagesRead') {
+        const num = value === '' ? '' : Math.max(0, parseInt(value, 10) || 0);
+        setFormData(prev => ({ ...prev, [name]: num }));
+      } else {
+        setFormData(prev => ({ ...prev, [name]: value }));
+      }
     }
   };
 
@@ -64,14 +118,24 @@ function Dashboard() {
     }
 
     try {
+      const pagesTotal = Number(formData.pagesTotal || 0);
+      const pagesRead = Number(formData.pagesRead || 0);
+      if (pagesRead < 0 || pagesTotal < 0) {
+        setError('Pages must be non-negative');
+        return;
+      }
+      if (pagesRead > pagesTotal) {
+        setError('Pages read cannot exceed total pages');
+        return;
+      }
       if (editingId) {
-        await updateBook(editingId, formData.title, formData.author, formData.description, formData.image);
+        await updateBook(editingId, formData.title, formData.author, formData.description, formData.image, pagesTotal, pagesRead);
         setEditingId(null);
       } else {
-        await addBook(formData.title, formData.author, formData.description, formData.image);
+        await addBook(formData.title, formData.author, formData.description, formData.image, pagesTotal, pagesRead);
       }
       
-      setFormData({ title: '', author: '', description: '', image: null });
+      setFormData({ title: '', author: '', description: '', image: null, pagesTotal: 0, pagesRead: 0 });
       setShowModal(false);
       fetchBooks();
     } catch (err) {
@@ -84,7 +148,9 @@ function Dashboard() {
       title: book.title,
       author: book.author,
       description: book.description,
-      image: null
+      image: null,
+      pagesTotal: typeof book.pagesTotal === 'number' ? book.pagesTotal : (book.pagesTotal || 0),
+      pagesRead: typeof book.pagesRead === 'number' ? book.pagesRead : (book.pagesRead || 0)
     });
     setEditingId(book.id);
     setShowModal(true);
@@ -102,7 +168,7 @@ function Dashboard() {
   };
 
   const handleAddNew = () => {
-    setFormData({ title: '', author: '', description: '', image: null });
+    setFormData({ title: '', author: '', description: '', image: null, pagesTotal: 0, pagesRead: 0 });
     setEditingId(null);
     setShowModal(true);
   };
@@ -114,29 +180,100 @@ function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8 px-4">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-4xl font-bold text-gray-900">📚 My Library</h1>
-            <p className="text-gray-600 mt-2">Welcome, {username}</p>
+    <div className="min-h-screen bg-white text-gray-800">
+      <div className="flex max-w-7xl mx-auto">
+        <Sidebar onAddItem={handleAddNew} />
+
+        <div className="flex-1 min-w-0">
+          {/* Top bar */}
+          <div className="sticky top-0 z-10 bg-white border-b">
+            <div className="px-4 py-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-semibold">My Books</h1>
+                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-md">{filteredBooks.length}</span>
+              </div>
+              <div className="flex items-center gap-3 w-full md:w-auto">
+                <div className="relative flex-1 md:w-96">
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    className="w-full border rounded-md pl-10 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Start Searching..."
+                  />
+                  <span className="absolute left-3 top-2.5 text-gray-400">🔎</span>
+                </div>
+                <button 
+                  onClick={handleAddNew}
+                  className="hidden md:inline-flex bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-md"
+                >
+                  + Add Book
+                </button>
+                <button 
+                  onClick={handleLogout}
+                  className="hidden md:inline-flex bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium px-4 py-2 rounded-md"
+                >
+                  Logout
+                </button>
+              </div>
+            </div>
+
+            {/* Filters row */}
+            <div className="px-4 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="flex flex-wrap gap-1 text-sm">
+                  {letters.map(l => (
+                    <button
+                      key={l}
+                      type="button"
+                      onClick={() => setActiveLetter(prev => prev === l ? '' : l)}
+                      className={`px-2 py-1 rounded ${activeLetter === l ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+                    >
+                      {l}
+                    </button>
+                  ))}
+                </div>
+                <div className="ml-auto flex items-center gap-2">
+                  <div className="hidden md:flex items-center gap-2 text-sm">
+                    <span className="text-gray-600">Sort</span>
+                    <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="border rounded px-2 py-1">
+                      <option value="title">Title</option>
+                      <option value="author">Author</option>
+                      <option value="created">Recently added</option>
+                    </select>
+                  </div>
+                  <button onClick={() => setShowFilters(s => !s)} className="text-sm border rounded px-3 py-1 bg-white hover:bg-gray-50">
+                    Filters
+                  </button>
+                </div>
+              </div>
+
+              {showFilters && (
+                <div className="mt-3 border rounded-md p-3 bg-gray-50">
+                  <div className="grid md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs text-gray-600">Author</label>
+                      <input
+                        type="text"
+                        value={authorFilter}
+                        onChange={e => setAuthorFilter(e.target.value)}
+                        className="w-full border rounded px-2 py-1"
+                        placeholder="Filter by author"
+                      />
+                    </div>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={onlyWithCover} onChange={e => setOnlyWithCover(e.target.checked)} />
+                      Only with cover image
+                    </label>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={progressOnly} onChange={e => setProgressOnly(e.target.checked)} />
+                      Only with progress
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-          <div className="flex gap-3">
-            <button 
-              onClick={handleAddNew}
-              className="bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-6 rounded-lg transition"
-            >
-              + Add Book
-            </button>
-            <button 
-              onClick={handleLogout}
-              className="bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-6 rounded-lg transition"
-            >
-              Logout
-            </button>
-          </div>
-        </div>
 
         {/* Error Message */}
         {error && (
@@ -162,11 +299,11 @@ function Dashboard() {
           </div>
         ) : (
           /* Books Grid */
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {books.map((book) => (
+          <div className="p-4 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {filteredBooks.map((book) => (
               <div 
                 key={book.id} 
-                className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition"
+                className="bg-white rounded-lg border overflow-hidden hover:shadow-sm transition"
               >
                 {book.imagePath && (
                   <img 
@@ -181,10 +318,29 @@ function Dashboard() {
                   {book.description && (
                     <p className="text-gray-500 text-sm mb-4 line-clamp-2">{book.description}</p>
                   )}
+                  {(book.pagesTotal > 0 || book.pagesRead > 0) && (
+                    <div className="mb-4">
+                      <div className="flex justify-between text-xs text-gray-600 mb-1">
+                        <span>Progress</span>
+                        <span>
+                          {Math.min(100, Math.round(((book.pagesRead || 0) / (book.pagesTotal || 1)) * 100))}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded h-2 overflow-hidden">
+                        <div
+                          className="bg-green-500 h-2"
+                          style={{ width: `${Math.min(100, Math.round(((book.pagesRead || 0) / (book.pagesTotal || 1)) * 100))}%` }}
+                        />
+                      </div>
+                      <div className="text-xs text-gray-600 mt-1">
+                        Pages: {book.pagesRead || 0} / {book.pagesTotal || 0}
+                      </div>
+                    </div>
+                  )}
                   <div className="flex gap-2">
                     <button 
                       onClick={() => handleEdit(book)}
-                      className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-3 rounded transition text-sm"
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-3 rounded transition text-sm"
                     >
                       Edit
                     </button>
@@ -200,6 +356,7 @@ function Dashboard() {
             ))}
           </div>
         )}
+        </div>
       </div>
 
       {/* Modal */}
@@ -247,6 +404,33 @@ function Dashboard() {
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-gray-700 font-medium mb-1">Total Pages</label>
+                  <input
+                    type="number"
+                    name="pagesTotal"
+                    min="0"
+                    value={formData.pagesTotal}
+                    onChange={handleInputChange}
+                    className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g., 300"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-700 font-medium mb-1">Pages Read</label>
+                  <input
+                    type="number"
+                    name="pagesRead"
+                    min="0"
+                    value={formData.pagesRead}
+                    onChange={handleInputChange}
+                    className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g., 120"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-gray-700 font-medium mb-1">Book Cover Image</label>
                 <input 
@@ -261,14 +445,14 @@ function Dashboard() {
               <div className="flex gap-3 pt-4">
                 <button 
                   type="submit"
-                  className="flex-1 bg-green-500 hover:bg-green-600 text-white font-medium py-2 rounded transition"
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium py-2 rounded transition"
                 >
                   {editingId ? 'Update' : 'Add'} Book
                 </button>
                 <button 
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="flex-1 bg-gray-400 hover:bg-gray-500 text-white font-medium py-2 rounded transition"
+                  className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-2 rounded transition"
                 >
                   Cancel
                 </button>

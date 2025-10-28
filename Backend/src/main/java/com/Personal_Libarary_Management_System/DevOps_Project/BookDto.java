@@ -10,11 +10,14 @@ public class BookDto {
     private String imagePath;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private Integer pagesTotal;
+    private Integer pagesRead;
 
     public BookDto() {}
 
     public BookDto(Long id, String title, String author, String description, String imagePath,
-                   LocalDateTime createdAt, LocalDateTime updatedAt) {
+                   LocalDateTime createdAt, LocalDateTime updatedAt,
+                   Integer pagesTotal, Integer pagesRead) {
         this.id = id;
         this.title = title;
         this.author = author;
@@ -22,6 +25,8 @@ public class BookDto {
         this.imagePath = imagePath;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
+        this.pagesTotal = pagesTotal;
+        this.pagesRead = pagesRead;
     }
 
     public static BookDto fromEntity(Book b) {
@@ -32,7 +37,9 @@ public class BookDto {
             b.getDescription(),
             b.getImagePath(),
             b.getCreatedAt(),
-            b.getUpdatedAt()
+            b.getUpdatedAt(),
+            b.getPagesTotal(),
+            b.getPagesRead()
         );
     }
 
@@ -50,4 +57,8 @@ public class BookDto {
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+    public Integer getPagesTotal() { return pagesTotal; }
+    public void setPagesTotal(Integer pagesTotal) { this.pagesTotal = pagesTotal; }
+    public Integer getPagesRead() { return pagesRead; }
+    public void setPagesRead(Integer pagesRead) { this.pagesRead = pagesRead; }
 }

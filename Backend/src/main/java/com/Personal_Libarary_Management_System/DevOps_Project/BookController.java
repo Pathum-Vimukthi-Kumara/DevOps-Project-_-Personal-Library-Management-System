@@ -7,7 +7,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -39,7 +38,9 @@ public class BookController {
                                    @RequestParam("title") String title,
                                    @RequestParam("author") String author,
                                    @RequestParam(value = "description", required = false) String description,
-                                   @RequestParam(value = "image", required = false) MultipartFile image) {
+                                   @RequestParam(value = "image", required = false) MultipartFile image,
+                                   @RequestParam(value = "pagesTotal", required = false) Integer pagesTotal,
+                                   @RequestParam(value = "pagesRead", required = false) Integer pagesRead) {
         try {
             if (token == null || token.isEmpty()) {
                 return ResponseEntity.status(401).body(new ApiResponse("Missing Authorization header"));
@@ -61,6 +62,18 @@ public class BookController {
             book.setAuthor(author);
             book.setDescription(description);
             book.setUser(userOpt.get());
+
+            // Pages validation and defaulting
+            int total = pagesTotal != null ? pagesTotal : 0;
+            int read = pagesRead != null ? pagesRead : 0;
+            if (total < 0 || read < 0) {
+                return ResponseEntity.badRequest().body(new ApiResponse("pagesTotal and pagesRead must be non-negative"));
+            }
+            if (read > total) {
+                return ResponseEntity.badRequest().body(new ApiResponse("pagesRead cannot exceed pagesTotal"));
+            }
+            book.setPagesTotal(total);
+            book.setPagesRead(read);
 
             if (image != null && !image.isEmpty()) {
                 String imagePath = saveImage(image);
@@ -102,7 +115,9 @@ public class BookController {
                                       @RequestParam("title") String title,
                                       @RequestParam("author") String author,
                                       @RequestParam(value = "description", required = false) String description,
-                                      @RequestParam(value = "image", required = false) MultipartFile image) {
+                                      @RequestParam(value = "image", required = false) MultipartFile image,
+                                      @RequestParam(value = "pagesTotal", required = false) Integer pagesTotal,
+                                      @RequestParam(value = "pagesRead", required = false) Integer pagesRead) {
     try {
             String jwt = token.replace("Bearer ", "");
             if (!jwtUtil.isTokenValid(jwt)) {
@@ -124,6 +139,20 @@ public class BookController {
             book.setTitle(title);
             book.setAuthor(author);
             book.setDescription(description);
+
+            // Compute new pages values from provided params or existing values
+            int existingTotal = book.getPagesTotal() != null ? book.getPagesTotal() : 0;
+            int existingRead = book.getPagesRead() != null ? book.getPagesRead() : 0;
+            int newTotal = pagesTotal != null ? pagesTotal : existingTotal;
+            int newRead = pagesRead != null ? pagesRead : existingRead;
+            if (newTotal < 0 || newRead < 0) {
+                return ResponseEntity.badRequest().body(new ApiResponse("pagesTotal and pagesRead must be non-negative"));
+            }
+            if (newRead > newTotal) {
+                return ResponseEntity.badRequest().body(new ApiResponse("pagesRead cannot exceed pagesTotal"));
+            }
+            book.setPagesTotal(newTotal);
+            book.setPagesRead(newRead);
 
             if (image != null && !image.isEmpty()) {
                 String imagePath = saveImage(image);
@@ -184,8 +213,9 @@ public class BookController {
             } else {
                 books = bookRepository.findAll();
             }
-            
-            return ResponseEntity.ok(books);
+            // Return DTOs for consistency and to avoid lazy-loading issues
+            List<BookDto> dtos = books.stream().map(BookDto::fromEntity).toList();
+            return ResponseEntity.ok(dtos);
         } catch (Exception e) {
             return ResponseEntity.status(500).body(new ApiResponse("Error searching books"));
         }

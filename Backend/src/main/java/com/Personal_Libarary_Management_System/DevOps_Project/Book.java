@@ -29,6 +29,12 @@ public class Book {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @Column(name = "pages_total")
+    private Integer pagesTotal = 0;
+
+    @Column(name = "pages_read")
+    private Integer pagesRead = 0;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     @JsonIgnore
@@ -60,6 +66,10 @@ public class Book {
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+    public Integer getPagesTotal() { return pagesTotal; }
+    public void setPagesTotal(Integer pagesTotal) { this.pagesTotal = pagesTotal; }
+    public Integer getPagesRead() { return pagesRead; }
+    public void setPagesRead(Integer pagesRead) { this.pagesRead = pagesRead; }
     @JsonIgnore
     public User getUser() { return user; }
     public void setUser(User user) { this.user = user; }

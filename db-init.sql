@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS books (
     author VARCHAR(255) NOT NULL,
     description TEXT,
     image_path VARCHAR(500),
+    pages_total INT DEFAULT 0,
+    pages_read INT DEFAULT 0,
     user_id BIGINT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -33,6 +35,10 @@ CREATE INDEX IF NOT EXISTS idx_books_title ON books(title);
 CREATE INDEX IF NOT EXISTS idx_books_author ON books(author);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+-- Backfill for existing databases created before these columns were added
+ALTER TABLE books ADD COLUMN IF NOT EXISTS pages_total INT DEFAULT 0;
+ALTER TABLE books ADD COLUMN IF NOT EXISTS pages_read INT DEFAULT 0;
 
 -- Insert sample data
 -- Password: admin123 (BCrypt encoded)
