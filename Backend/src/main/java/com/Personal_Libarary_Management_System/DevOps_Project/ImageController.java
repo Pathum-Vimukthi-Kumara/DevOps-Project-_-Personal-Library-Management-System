@@ -8,10 +8,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.Files;
 
 @RestController
 @RequestMapping("/api/images")
-@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:4000"})
 public class ImageController {
 
     @Value("${file.upload-dir}")
@@ -24,8 +24,12 @@ public class ImageController {
             Resource resource = new UrlResource(filePath.toUri());
             
             if (resource.exists() && resource.isReadable()) {
+                String contentType = Files.probeContentType(filePath);
+                if (contentType == null) {
+                    contentType = MediaType.APPLICATION_OCTET_STREAM_VALUE;
+                }
                 return ResponseEntity.ok()
-                        .contentType(MediaType.IMAGE_JPEG)
+                        .contentType(MediaType.parseMediaType(contentType))
                         .body(resource);
             } else {
                 return ResponseEntity.notFound().build();

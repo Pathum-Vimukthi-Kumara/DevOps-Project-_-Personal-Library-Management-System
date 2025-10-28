@@ -170,7 +170,7 @@ function Dashboard() {
               >
                 {book.imagePath && (
                   <img 
-                    src={`${process.env.REACT_APP_API_URL || window.REACT_APP_API_URL || 'http://localhost:5001'}/${book.imagePath}`} 
+                    src={`${process.env.REACT_APP_API_URL || window.REACT_APP_API_URL || 'http://localhost:5001'}/api/images/${book.imagePath}`} 
                     alt={book.title}
                     className="w-full h-40 object-cover"
                   />
