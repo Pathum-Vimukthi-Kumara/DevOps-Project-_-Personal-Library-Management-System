@@ -10,6 +10,7 @@ function Dashboard() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [username, setUsername] = useState('');
+  const [currentView, setCurrentView] = useState('all'); // 'dashboard' | 'completed' | 'remaining' | 'all'
   // Filters & search
   const [search, setSearch] = useState('');
   const [activeLetter, setActiveLetter] = useState('');
@@ -61,6 +62,12 @@ function Dashboard() {
 
   const filteredBooks = useMemo(() => {
     let list = Array.isArray(books) ? [...books] : [];
+    // Sidebar filtering first
+    if (currentView === 'completed') {
+      list = list.filter(b => (b.pagesTotal || 0) > 0 && (b.pagesRead || 0) >= (b.pagesTotal || 0));
+    } else if (currentView === 'remaining') {
+      list = list.filter(b => (b.pagesTotal || 0) === 0 || (b.pagesRead || 0) < (b.pagesTotal || 0));
+    }
     const q = (search || '').trim().toLowerCase();
     if (q) {
       list = list.filter(b =>
@@ -92,7 +99,15 @@ function Dashboard() {
       return (a.title || '').localeCompare(b.title || '');
     });
     return list;
-  }, [books, search, activeLetter, authorFilter, onlyWithCover, progressOnly, sortBy]);
+  }, [books, currentView, search, activeLetter, authorFilter, onlyWithCover, progressOnly, sortBy]);
+
+  const stats = useMemo(() => {
+    const total = books.length;
+    const completed = books.filter(b => (b.pagesTotal || 0) > 0 && (b.pagesRead || 0) >= (b.pagesTotal || 0)).length;
+    const inProgress = books.filter(b => (b.pagesTotal || 0) > 0 && (b.pagesRead || 0) > 0 && (b.pagesRead || 0) < (b.pagesTotal || 0)).length;
+    const notStarted = total - completed - inProgress;
+    return { total, completed, inProgress, notStarted };
+  }, [books]);
 
   const handleInputChange = (e) => {
     const { name, value, files } = e.target;
@@ -182,15 +197,17 @@ function Dashboard() {
   return (
     <div className="min-h-screen bg-white text-gray-800">
       <div className="flex max-w-7xl mx-auto">
-        <Sidebar onAddItem={handleAddNew} />
+        <Sidebar currentView={currentView} onSelect={setCurrentView} onAddItem={handleAddNew} />
 
         <div className="flex-1 min-w-0">
           {/* Top bar */}
           <div className="sticky top-0 z-10 bg-white border-b">
             <div className="px-4 py-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-semibold">My Books</h1>
-                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-md">{filteredBooks.length}</span>
+                <h1 className="text-2xl font-semibold">{currentView === 'dashboard' ? 'Dashboard' : 'My Books'}</h1>
+                {currentView !== 'dashboard' && (
+                  <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-md">{filteredBooks.length}</span>
+                )}
               </div>
               <div className="flex items-center gap-3 w-full md:w-auto">
                 <div className="relative flex-1 md:w-96">
@@ -218,8 +235,9 @@ function Dashboard() {
               </div>
             </div>
 
-            {/* Filters row */}
+            {/* Filters row (hidden on dashboard view) */}
             <div className="px-4 pb-3">
+              {currentView !== 'dashboard' && (
               <div className="flex items-center gap-3">
                 <div className="flex flex-wrap gap-1 text-sm">
                   {letters.map(l => (
@@ -247,8 +265,9 @@ function Dashboard() {
                   </button>
                 </div>
               </div>
+              )}
 
-              {showFilters && (
+              {showFilters && currentView !== 'dashboard' && (
                 <div className="mt-3 border rounded-md p-3 bg-gray-50">
                   <div className="grid md:grid-cols-3 gap-3">
                     <div>
@@ -283,7 +302,26 @@ function Dashboard() {
         )}
 
         {/* Loading State */}
-        {loading ? (
+        {currentView === 'dashboard' ? (
+          <div className="p-6 grid gap-4 md:grid-cols-4">
+            <div className="border rounded-lg p-4 bg-white">
+              <div className="text-sm text-gray-600">Total Books</div>
+              <div className="text-3xl font-semibold">{stats.total}</div>
+            </div>
+            <div className="border rounded-lg p-4 bg-white">
+              <div className="text-sm text-gray-600">Completed</div>
+              <div className="text-3xl font-semibold text-green-600">{stats.completed}</div>
+            </div>
+            <div className="border rounded-lg p-4 bg-white">
+              <div className="text-sm text-gray-600">In Progress</div>
+              <div className="text-3xl font-semibold text-blue-600">{stats.inProgress}</div>
+            </div>
+            <div className="border rounded-lg p-4 bg-white">
+              <div className="text-sm text-gray-600">Not Started</div>
+              <div className="text-3xl font-semibold text-gray-700">{stats.notStarted}</div>
+            </div>
+          </div>
+        ) : loading ? (
           <div className="text-center py-12">
             <p className="text-gray-600 text-lg">Loading your books...</p>
           </div>

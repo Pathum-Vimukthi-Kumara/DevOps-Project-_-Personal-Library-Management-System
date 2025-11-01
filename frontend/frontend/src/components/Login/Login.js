@@ -84,11 +84,7 @@ function Login() {
           Don't have an account? <Link to="/register" className="text-blue-600 hover:text-blue-700 font-medium">Register here</Link>
         </div>
 
-        <div className="mt-4 p-3 bg-gray-100 rounded text-xs text-gray-600">
-          <p><strong>Demo Credentials:</strong></p>
-          <p>Username: admin</p>
-          <p>Password: admin123</p>
-        </div>
+        {/* Demo credentials removed for production */}
       </div>
     </div>
   );
