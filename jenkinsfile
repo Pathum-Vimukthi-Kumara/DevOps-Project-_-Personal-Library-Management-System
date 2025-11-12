@@ -1,0 +1,122 @@
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '15'))
+        parallelsAlwaysFailFast()
+    }
+
+    triggers {
+        pollSCM('H/1 * * * *')  
+    }
+
+
+    environment {
+        DOCKER_HUB_REPO        = 'pathum2002/personal-library'
+        BACKEND_DIR           = 'Backend'
+        FRONTEND_DIR          = 'frontend/frontend'
+        IMAGE_TAG_BUILD       = "${env.BUILD_NUMBER}"
+        IMAGE_TAG_COMMIT      = "${env.GIT_COMMIT?.take(12) ?: env.BUILD_NUMBER}"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                sh "chmod +x ${env.BACKEND_DIR}/mvnw"
+            }
+        }
+
+        stage('Build & Test Backend') {
+            when {
+                anyOf {
+                    changeset 'Backend/**'
+                    changeset 'compose.yaml'
+                }
+            }
+            steps {
+                dir("${env.BACKEND_DIR}") {
+                    sh '''
+                        chmod +x ./mvnw
+                        ./mvnw -B -DskipTests=true clean verify
+                    '''
+                }
+            }
+        }
+
+        stage('Build Docker Images') {
+            parallel {
+                stage('Backend Image') {
+                    when {
+                        anyOf {
+                            changeset 'Backend/**'
+                            changeset 'compose.yaml'
+                        }
+                    }
+                    steps {
+                        dir("${env.BACKEND_DIR}") {
+                            script {
+                                def base = "${DOCKER_HUB_REPO}-backend"
+                                sh """
+                                    docker build \
+                                        -t ${base}:${IMAGE_TAG_BUILD} \
+                                        -t ${base}:latest .
+                                """
+                            }
+                        }
+                    }
+                }
+                stage('Frontend Image') {
+                    when {
+                        anyOf {
+                            changeset 'frontend/frontend/**'
+                            changeset 'compose.yaml'
+                        }
+                    }
+                    steps {
+                        dir("${env.FRONTEND_DIR}") {
+                            script {
+                                def base = "${DOCKER_HUB_REPO}-frontend"
+                                if (!fileExists('Dockerfile')) {
+                                    error "No Dockerfile in ${env.FRONTEND_DIR}; cannot build frontend image."
+                                }
+                                sh """
+                                    docker build \
+                                        -t ${base}:${IMAGE_TAG_BUILD} \
+                                        -t ${base}:latest .
+                                """
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'pathum1', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
+                    sh "docker push ${DOCKER_HUB_REPO}-backend:${IMAGE_TAG_BUILD}"
+                    sh "docker push ${DOCKER_HUB_REPO}-backend:latest"
+                    sh "docker push ${DOCKER_HUB_REPO}-frontend:${IMAGE_TAG_BUILD}"
+                    sh "docker push ${DOCKER_HUB_REPO}-frontend:latest"
+                    sh 'docker logout || true'
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'SUCCESS'
+        }
+        failure {
+            echo 'FAILURE: Review earlier stage logs.'
+        }
+        always {
+            sh 'docker image prune -f || true'
+        }
+    }
+}
