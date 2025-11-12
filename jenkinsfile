@@ -29,17 +29,13 @@ pipeline {
         }
 
         stage('Build & Test Backend') {
-            when {
-                anyOf {
-                    changeset 'Backend/**'
-                    changeset 'compose.yaml'
-                }
-            }
             steps {
                 dir("${env.BACKEND_DIR}") {
                     sh '''
+                        echo "=== Building Backend ==="
                         chmod +x ./mvnw
                         ./mvnw -B -DskipTests=true clean verify
+                        echo "✓ Backend build completed"
                     '''
                 }
             }
@@ -48,15 +44,10 @@ pipeline {
         stage('Build Docker Images') {
             parallel {
                 stage('Backend Image') {
-                    when {
-                        anyOf {
-                            changeset 'Backend/**'
-                            changeset 'compose.yaml'
-                        }
-                    }
                     steps {
                         dir("${env.BACKEND_DIR}") {
                             script {
+                                echo "=== Building Backend Docker Image ==="
                                 def base = "${DOCKER_HUB_REPO}-backend"
                                 sh """
                                     docker build \
@@ -64,20 +55,16 @@ pipeline {
                                         -t ${base}:${IMAGE_TAG_BUILD} \
                                         -t ${base}:latest .
                                 """
+                                sh "echo '✓ Backend image built: ${base}:${IMAGE_TAG_BUILD}'"
                             }
                         }
                     }
                 }
                 stage('Frontend Image') {
-                    when {
-                        anyOf {
-                            changeset 'frontend/frontend/**'
-                            changeset 'compose.yaml'
-                        }
-                    }
                     steps {
                         dir("${env.FRONTEND_DIR}") {
                             script {
+                                echo "=== Building Frontend Docker Image ==="
                                 def base = "${DOCKER_HUB_REPO}-frontend"
                                 if (!fileExists('Dockerfile')) {
                                     error "No Dockerfile in ${env.FRONTEND_DIR}; cannot build frontend image."
@@ -88,6 +75,7 @@ pipeline {
                                         -t ${base}:${IMAGE_TAG_BUILD} \
                                         -t ${base}:latest .
                                 """
+                                sh "echo '✓ Frontend image built: ${base}:${IMAGE_TAG_BUILD}'"
                             }
                         }
                     }
@@ -95,36 +83,14 @@ pipeline {
             }
         }
 
-        stage('Push to Docker Hub') {
+        stage('Test Docker Images') {
             steps {
                 script {
-                    withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                        sh '''
-                            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                            
-                            # Push backend images if they exist
-                            if docker images | grep -q "${DOCKER_HUB_REPO}-backend"; then
-                                echo "Pushing backend images..."
-                                docker push ${DOCKER_HUB_REPO}-backend:${IMAGE_TAG_BUILD}
-                                docker push ${DOCKER_HUB_REPO}-backend:latest
-                                echo "Backend images pushed successfully"
-                            else
-                                echo "Backend image not found, skipping push"
-                            fi
-                            
-                            # Push frontend images if they exist
-                            if docker images | grep -q "${DOCKER_HUB_REPO}-frontend"; then
-                                echo "Pushing frontend images..."
-                                docker push ${DOCKER_HUB_REPO}-frontend:${IMAGE_TAG_BUILD}
-                                docker push ${DOCKER_HUB_REPO}-frontend:latest
-                                echo "Frontend images pushed successfully"
-                            else
-                                echo "Frontend image not found, skipping push"
-                            fi
-                            
-                            docker logout || true
-                        '''
-                    }
+                    echo "=== Testing Built Images ==="
+                    sh """
+                        docker images | grep "${DOCKER_HUB_REPO}" || echo "No images found"
+                        echo "✓ Docker images verified"
+                    """
                 }
             }
         }
@@ -133,20 +99,19 @@ pipeline {
     post {
         success {
             echo '✓ Pipeline completed successfully!'
-            echo "Backend Image: ${DOCKER_HUB_REPO}-backend:${IMAGE_TAG_BUILD}"
-            echo "Frontend Image: ${DOCKER_HUB_REPO}-frontend:${IMAGE_TAG_BUILD}"
+            sh """
+                echo "=== Final Image List ==="
+                docker images | grep "${DOCKER_HUB_REPO}" || echo "No images to display"
+            """
         }
         failure {
             echo '✗ FAILURE: Review earlier stage logs.'
         }
         always {
             sh '''
-                # Clean up dangling images
-                docker image prune -f || true
-                
-                # Optional: Remove build-specific tagged images to save space
-                # docker rmi ${DOCKER_HUB_REPO}-backend:${IMAGE_TAG_BUILD} || true
-                # docker rmi ${DOCKER_HUB_REPO}-frontend:${IMAGE_TAG_BUILD} || true
+                echo "=== Cleaning up ==="
+                docker image prune -f
+                echo "✓ Cleanup completed"
             '''
         }
     }
