@@ -12,7 +12,6 @@ pipeline {
         pollSCM('H/1 * * * *')  
     }
 
-
     environment {
         DOCKER_HUB_REPO        = 'pathum2002/personal-library'
         BACKEND_DIR           = 'Backend'
@@ -61,6 +60,7 @@ pipeline {
                                 def base = "${DOCKER_HUB_REPO}-backend"
                                 sh """
                                     docker build \
+                                        --no-cache \
                                         -t ${base}:${IMAGE_TAG_BUILD} \
                                         -t ${base}:latest .
                                 """
@@ -84,6 +84,7 @@ pipeline {
                                 }
                                 sh """
                                     docker build \
+                                        --no-cache \
                                         -t ${base}:${IMAGE_TAG_BUILD} \
                                         -t ${base}:latest .
                                 """
@@ -96,13 +97,30 @@ pipeline {
 
         stage('Push to Docker Hub') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                    sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
-                    sh "docker push ${DOCKER_HUB_REPO}-backend:${IMAGE_TAG_BUILD}"
-                    sh "docker push ${DOCKER_HUB_REPO}-backend:latest"
-                    sh "docker push ${DOCKER_HUB_REPO}-frontend:${IMAGE_TAG_BUILD}"
-                    sh "docker push ${DOCKER_HUB_REPO}-frontend:latest"
-                    sh 'docker logout || true'
+                script {
+                    withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh '''
+                            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                            
+                            # Push backend images
+                            if docker images | grep -q "${DOCKER_HUB_REPO}-backend"; then
+                                docker push ${DOCKER_HUB_REPO}-backend:${IMAGE_TAG_BUILD}
+                                docker push ${DOCKER_HUB_REPO}-backend:latest
+                            else
+                                echo "Backend image not found, skipping push"
+                            fi
+                            
+                            # Push frontend images
+                            if docker images | grep -q "${DOCKER_HUB_REPO}-frontend"; then
+                                docker push ${DOCKER_HUB_REPO}-frontend:${IMAGE_TAG_BUILD}
+                                docker push ${DOCKER_HUB_REPO}-frontend:latest
+                            else
+                                echo "Frontend image not found, skipping push"
+                            fi
+                            
+                            docker logout || true
+                        '''
+                    }
                 }
             }
         }
@@ -110,13 +128,22 @@ pipeline {
 
     post {
         success {
-            echo 'SUCCESS'
+            echo '✓ Pipeline completed successfully!'
+            echo "Backend Image: ${DOCKER_HUB_REPO}-backend:${IMAGE_TAG_BUILD}"
+            echo "Frontend Image: ${DOCKER_HUB_REPO}-frontend:${IMAGE_TAG_BUILD}"
         }
         failure {
-            echo 'FAILURE: Review earlier stage logs.'
+            echo '✗ FAILURE: Review earlier stage logs.'
         }
         always {
-            sh 'docker image prune -f || true'
+            sh '''
+                # Clean up dangling images
+                docker image prune -f || true
+                
+                # Optional: Remove build-specific tagged images to save space
+                # docker rmi ${DOCKER_HUB_REPO}-backend:${IMAGE_TAG_BUILD} || true
+                # docker rmi ${DOCKER_HUB_REPO}-frontend:${IMAGE_TAG_BUILD} || true
+            '''
         }
     }
 }
