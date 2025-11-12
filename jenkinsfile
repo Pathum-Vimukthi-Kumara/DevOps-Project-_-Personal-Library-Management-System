@@ -102,18 +102,22 @@ pipeline {
                         sh '''
                             echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
                             
-                            # Push backend images
+                            # Push backend images if they exist
                             if docker images | grep -q "${DOCKER_HUB_REPO}-backend"; then
+                                echo "Pushing backend images..."
                                 docker push ${DOCKER_HUB_REPO}-backend:${IMAGE_TAG_BUILD}
                                 docker push ${DOCKER_HUB_REPO}-backend:latest
+                                echo "Backend images pushed successfully"
                             else
                                 echo "Backend image not found, skipping push"
                             fi
                             
-                            # Push frontend images
+                            # Push frontend images if they exist
                             if docker images | grep -q "${DOCKER_HUB_REPO}-frontend"; then
+                                echo "Pushing frontend images..."
                                 docker push ${DOCKER_HUB_REPO}-frontend:${IMAGE_TAG_BUILD}
                                 docker push ${DOCKER_HUB_REPO}-frontend:latest
+                                echo "Frontend images pushed successfully"
                             else
                                 echo "Frontend image not found, skipping push"
                             fi
