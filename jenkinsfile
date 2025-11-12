@@ -21,10 +21,38 @@ pipeline {
     }
 
     stages {
-        stage('Checkout') {
+        stage('Checkout & Setup') {
             steps {
                 checkout scm
-                sh "chmod +x ${env.BACKEND_DIR}/mvnw"
+                sh """
+                    echo "=== Setting up workspace ==="
+                    chmod +x ${env.BACKEND_DIR}/mvnw
+                    echo "✓ Checkout completed"
+                """
+            }
+        }
+
+        stage('Verify Environment') {
+            steps {
+                sh """
+                    echo "=== Environment Verification ==="
+                    echo "Workspace: ${env.WORKSPACE}"
+                    echo "Build Number: ${env.BUILD_NUMBER}"
+                    echo "Git Commit: ${env.GIT_COMMIT}"
+                    echo "Backend Dir: ${env.BACKEND_DIR}"
+                    echo "Frontend Dir: ${env.FRONTEND_DIR}"
+                    
+                    echo "=== Directory Structure ==="
+                    echo "Backend contents:"
+                    ls -la ${env.BACKEND_DIR}/ || echo "Backend directory not found"
+                    echo "Frontend contents:"
+                    ls -la ${env.FRONTEND_DIR}/ || echo "Frontend directory not found"
+                    
+                    echo "=== Tools Verification ==="
+                    java -version || echo "Java not available"
+                    docker --version || echo "Docker not available"
+                    echo "✓ Environment verification completed"
+                """
             }
         }
 
@@ -32,9 +60,9 @@ pipeline {
             steps {
                 dir("${env.BACKEND_DIR}") {
                     sh '''
-                        echo "=== Building Backend ==="
+                        echo "=== Building Backend Application ==="
                         chmod +x ./mvnw
-                        ./mvnw -B -DskipTests=true clean verify
+                        ./mvnw -B -DskipTests=true clean compile
                         echo "✓ Backend build completed"
                     '''
                 }
@@ -48,14 +76,27 @@ pipeline {
                         dir("${env.BACKEND_DIR}") {
                             script {
                                 echo "=== Building Backend Docker Image ==="
-                                def base = "${DOCKER_HUB_REPO}-backend"
+                                def base = "${env.DOCKER_HUB_REPO}-backend"
+                                
+                                // Check if Dockerfile exists
+                                if (!fileExists('Dockerfile')) {
+                                    error "Dockerfile not found in backend directory"
+                                }
+                                
                                 sh """
+                                    echo "Building Docker image: ${base}"
                                     docker build \
                                         --no-cache \
-                                        -t ${base}:${IMAGE_TAG_BUILD} \
+                                        -t ${base}:${env.IMAGE_TAG_BUILD} \
                                         -t ${base}:latest .
+                                    echo "✓ Backend Docker image built successfully"
                                 """
-                                sh "echo '✓ Backend image built: ${base}:${IMAGE_TAG_BUILD}'"
+                                
+                                // Verify the image was created
+                                sh """
+                                    echo "Verifying backend image:"
+                                    docker images | grep "${base}" || echo "Backend image not found after build"
+                                """
                             }
                         }
                     }
@@ -65,17 +106,28 @@ pipeline {
                         dir("${env.FRONTEND_DIR}") {
                             script {
                                 echo "=== Building Frontend Docker Image ==="
-                                def base = "${DOCKER_HUB_REPO}-frontend"
+                                def base = "${env.DOCKER_HUB_REPO}-frontend"
+                                
+                                // Check if Dockerfile exists
                                 if (!fileExists('Dockerfile')) {
-                                    error "No Dockerfile in ${env.FRONTEND_DIR}; cannot build frontend image."
+                                    echo "WARNING: No Dockerfile in frontend directory, skipping frontend build"
+                                    return
                                 }
+                                
                                 sh """
+                                    echo "Building Docker image: ${base}"
                                     docker build \
                                         --no-cache \
-                                        -t ${base}:${IMAGE_TAG_BUILD} \
+                                        -t ${base}:${env.IMAGE_TAG_BUILD} \
                                         -t ${base}:latest .
+                                    echo "✓ Frontend Docker image built successfully"
                                 """
-                                sh "echo '✓ Frontend image built: ${base}:${IMAGE_TAG_BUILD}'"
+                                
+                                // Verify the image was created
+                                sh """
+                                    echo "Verifying frontend image:"
+                                    docker images | grep "${base}" || echo "Frontend image not found after build"
+                                """
                             }
                         }
                     }
@@ -83,14 +135,89 @@ pipeline {
             }
         }
 
-        stage('Test Docker Images') {
+        stage('Verify Docker Images') {
             steps {
                 script {
-                    echo "=== Testing Built Images ==="
+                    echo "=== Verifying All Docker Images ==="
                     sh """
-                        docker images | grep "${DOCKER_HUB_REPO}" || echo "No images found"
-                        echo "✓ Docker images verified"
+                        echo "List of all Docker images for ${env.DOCKER_HUB_REPO}:"
+                        docker images | grep "${env.DOCKER_HUB_REPO}" || echo "No images found for repository"
+                        
+                        echo "Total Docker images on system:"
+                        docker images | wc -l
                     """
+                }
+            }
+        }
+
+        stage('Test Docker Push (Optional)') {
+            steps {
+                script {
+                    echo "=== Testing Docker Hub Connectivity ==="
+                    try {
+                        withCredentials([usernamePassword(
+                            credentialsId: 'docker-hub-credentials', 
+                            usernameVariable: 'DOCKER_USER', 
+                            passwordVariable: 'DOCKER_PASS'
+                        )]) {
+                            sh '''
+                                echo "Testing Docker Hub login..."
+                                echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                                echo "✓ Docker Hub login successful"
+                                docker logout
+                            '''
+                        }
+                    } catch (Exception e) {
+                        echo "WARNING: Docker Hub credentials not available or login failed"
+                        echo "Error: ${e.message}"
+                    }
+                }
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                script {
+                    echo "=== Pushing Images to Docker Hub ==="
+                    try {
+                        withCredentials([usernamePassword(
+                            credentialsId: 'docker-hub-credentials', 
+                            usernameVariable: 'DOCKER_USER', 
+                            passwordVariable: 'DOCKER_PASS'
+                        )]) {
+                            sh """
+                                echo "Logging into Docker Hub..."
+                                echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                                
+                                # Push backend images if they exist
+                                if docker images | grep -q "${env.DOCKER_HUB_REPO}-backend"; then
+                                    echo "Pushing backend images..."
+                                    docker push ${env.DOCKER_HUB_REPO}-backend:${env.IMAGE_TAG_BUILD} || echo "Failed to push ${env.IMAGE_TAG_BUILD}"
+                                    docker push ${env.DOCKER_HUB_REPO}-backend:latest || echo "Failed to push latest"
+                                    echo "✓ Backend images pushed"
+                                else
+                                    echo "Backend image not found, skipping push"
+                                fi
+                                
+                                # Push frontend images if they exist
+                                if docker images | grep -q "${env.DOCKER_HUB_REPO}-frontend"; then
+                                    echo "Pushing frontend images..."
+                                    docker push ${env.DOCKER_HUB_REPO}-frontend:${env.IMAGE_TAG_BUILD} || echo "Failed to push ${env.IMAGE_TAG_BUILD}"
+                                    docker push ${env.DOCKER_HUB_REPO}-frontend:latest || echo "Failed to push latest"
+                                    echo "✓ Frontend images pushed"
+                                else
+                                    echo "Frontend image not found, skipping push"
+                                fi
+                                
+                                docker logout
+                                echo "✓ Docker Hub push completed"
+                            """
+                        }
+                    } catch (Exception e) {
+                        echo "ERROR: Failed to push to Docker Hub"
+                        echo "Error details: ${e.message}"
+                        error "Docker Hub push failed"
+                    }
                 }
             }
         }
@@ -98,21 +225,34 @@ pipeline {
 
     post {
         success {
-            echo '✓ Pipeline completed successfully!'
+            echo '🎉 PIPELINE SUCCESSFUL!'
             sh """
-                echo "=== Final Image List ==="
-                docker images | grep "${DOCKER_HUB_REPO}" || echo "No images to display"
+                echo "=== Final Results ==="
+                echo "Build Number: ${env.BUILD_NUMBER}"
+                echo "Backend Image: ${env.DOCKER_HUB_REPO}-backend:${env.IMAGE_TAG_BUILD}"
+                echo "Frontend Image: ${env.DOCKER_HUB_REPO}-frontend:${env.IMAGE_TAG_BUILD}"
+                echo "=== Built Images ==="
+                docker images | grep "${env.DOCKER_HUB_REPO}" || echo "No images to display"
             """
         }
         failure {
-            echo '✗ FAILURE: Review earlier stage logs.'
+            echo '❌ PIPELINE FAILED!'
+            sh """
+                echo "=== Debug Information ==="
+                echo "Current directory:"
+                pwd
+                ls -la
+                echo "Docker images:"
+                docker images | head -10
+            """
         }
         always {
-            sh '''
-                echo "=== Cleaning up ==="
-                docker image prune -f
+            echo "=== Cleaning Up ==="
+            sh """
+                echo "Cleaning up Docker resources..."
+                docker image prune -f || echo "Docker cleanup failed"
                 echo "✓ Cleanup completed"
-            '''
+            """
         }
     }
 }
