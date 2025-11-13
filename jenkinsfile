@@ -8,6 +8,11 @@ pipeline {
         parallelsAlwaysFailFast()
     }
 
+    parameters {
+        booleanParam(name: 'PUSH_TO_DOCKER', defaultValue: false, description: 'Push images to Docker Hub when enabled')
+        string(name: 'DOCKER_HUB_CREDENTIALS_ID', defaultValue: 'docker-hub-credentials', description: 'Jenkins credentials ID for Docker Hub (username+password)')
+    }
+
     triggers {
         pollSCM('H/1 * * * *')  
     }
@@ -151,12 +156,13 @@ pipeline {
         }
 
         stage('Test Docker Push (Optional)') {
+            when { expression { return params.PUSH_TO_DOCKER } }
             steps {
                 script {
                     echo "=== Testing Docker Hub Connectivity ==="
                     try {
                         withCredentials([usernamePassword(
-                            credentialsId: 'docker-hub-credentials', 
+                            credentialsId: params.DOCKER_HUB_CREDENTIALS_ID, 
                             usernameVariable: 'DOCKER_USER', 
                             passwordVariable: 'DOCKER_PASS'
                         )]) {
@@ -176,12 +182,13 @@ pipeline {
         }
 
         stage('Push to Docker Hub') {
+            when { expression { return params.PUSH_TO_DOCKER } }
             steps {
                 script {
                     echo "=== Pushing Images to Docker Hub ==="
                     try {
                         withCredentials([usernamePassword(
-                            credentialsId: 'docker-hub-credentials', 
+                            credentialsId: params.DOCKER_HUB_CREDENTIALS_ID, 
                             usernameVariable: 'DOCKER_USER', 
                             passwordVariable: 'DOCKER_PASS'
                         )]) {
@@ -216,7 +223,7 @@ pipeline {
                     } catch (Exception e) {
                         echo "ERROR: Failed to push to Docker Hub"
                         echo "Error details: ${e.message}"
-                        error "Docker Hub push failed"
+                        error "Docker Hub push failed. Ensure a Jenkins Username/Password credential exists with ID '${params.DOCKER_HUB_CREDENTIALS_ID}'."
                     }
                 }
             }
